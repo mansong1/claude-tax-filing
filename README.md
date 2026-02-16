@@ -1,47 +1,38 @@
 # Tax Filing Skill for Claude Code
 
-A Claude Code skill that prepares income tax returns end-to-end — reads source documents, computes taxes, and fills the official PDF forms.
+A Claude Code skill that prepares income tax returns end-to-end — reads source documents, computes taxes, discovers PDF form fields, and fills the official forms.
 
 ## What It Does
 
 1. **Reads** your W-2s, 1099s, brokerage statements, and prior-year returns
-2. **Computes** all the math — income, deductions, brackets, credits, capital gains
-3. **Downloads** the official blank PDF forms from IRS.gov / FTB.ca.gov
-4. **Discovers** field names in each PDF (XFA extraction, /TU tooltips)
-5. **Fills** every form programmatically using pypdf
-6. **Verifies** all fields were written correctly
-7. **Presents** a summary with verification checklist, signing reminders, and payment instructions
+2. **Looks up** current-year tax brackets, deductions, and credits
+3. **Computes** all the math — income, deductions, brackets, credits, capital gains
+4. **Downloads** the official blank PDF forms from IRS.gov / FTB.ca.gov
+5. **Discovers** field names in each PDF (XFA extraction, /TU tooltips, positional analysis)
+6. **Fills** every form programmatically using pypdf
+7. **Verifies** all fields were written correctly
+8. **Presents** a summary with verification checklist, signing reminders, and payment instructions
 
-## Supported Forms
+## Year-Agnostic, Form-Agnostic
 
-Currently handles:
-- **Federal**: Form 1040, Schedule D, Form 8949
-- **California**: Form 540
-
-The skill is designed to be extensible — it can research and fill any PDF tax form given the right field discovery approach.
-
-## Year-Agnostic
-
-This skill works for **any tax year**. It does not hardcode tax brackets, standard deduction amounts, or field mappings. Each run:
-- Looks up the correct year-specific values (brackets, deductions, credits)
+This skill doesn't hardcode tax brackets, deduction amounts, or field mappings. Each run:
+- Looks up the correct year-specific values from authoritative sources
 - Downloads that year's blank forms
 - Discovers field names fresh from the downloaded PDFs
 
+It can handle any fillable PDF tax form — federal, state, or otherwise — as long as it can research the form structure and field names.
+
 ## Installation
 
-### Manual (any Claude setup)
+Tell Claude to install the skill from this repo:
 
-Copy the `skills/tax-filing/` directory into your `.claude/skills/` folder:
+> Download the tax-filing skill from https://github.com/robbalian/claude-tax-filing and install it to my .claude/skills/ directory
 
-```bash
-cp -r skills/tax-filing ~/.claude/skills/
-```
-
-### Claude Code Plugin
+Or manually:
 
 ```bash
-/plugin marketplace add youruser/claude-tax-filing
-/plugin install tax-filing
+git clone https://github.com/robbalian/claude-tax-filing.git
+cp -r claude-tax-filing/skills/tax-filing ~/.claude/skills/
 ```
 
 ## Usage
