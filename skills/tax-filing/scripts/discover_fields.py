@@ -77,41 +77,68 @@ def discover_acroform(pdf_path, page_filter=None, search=None, type_filter=None)
 
 
 def discover_xfa(pdf_path, search=None):
-    """Extract XFA field descriptions using PyMuPDF (fitz)."""
+    """Extract XFA field descriptions using PyMuPDF (fitz).
+
+    Finds the XFA template by parsing /AcroForm -> /XFA array to locate the
+    template xref directly. Does NOT use brute-force xref scanning (unreliable).
+
+    Uses regex instead of xml.etree.ElementTree because IRS XFA XML has
+    unbound namespace prefixes and line-breaks inside closing tags that
+    break XML parsers.
+    """
     try:
         import fitz
     except ImportError:
         print("  PyMuPDF (fitz) not installed — skipping XFA discovery", file=sys.stderr)
         return []
 
-    import xml.etree.ElementTree as ET
+    import re
 
-    doc = fitz.open(pdf_path)
-    xfa_fields = []
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception as e:
+        print(f"  Cannot open PDF: {e}", file=sys.stderr)
+        return []
 
+    # Phase 1: Find XFA template xref via /AcroForm -> /XFA array
+    template_xref = None
     for i in range(1, doc.xref_length()):
         try:
-            stream = doc.xref_stream(i)
-            if not stream or b'<template' not in stream:
-                continue
-            root = ET.fromstring(stream.decode('utf-8', errors='replace'))
-            for field in root.iter():
-                if not field.tag.endswith('}field'):
-                    continue
-                name = field.get('name', '')
-                speak = ""
-                for child in field.iter():
-                    if child.tag.endswith('}speak') and child.text:
-                        speak = child.text.strip()
-                        break
-                if not name:
-                    continue
-                if search and search.lower() not in f"{name} {speak}".lower():
-                    continue
-                xfa_fields.append({"name": name, "speak": speak})
-            break
+            obj = doc.xref_object(i)
+            if '/XFA' in obj:
+                match = re.search(r'\(template\)\s+(\d+)\s+0\s+R', obj)
+                if match:
+                    template_xref = int(match.group(1))
+                    break
         except Exception:
             continue
+
+    if template_xref is None:
+        doc.close()
+        return []
+
+    # Phase 2: Extract fields using regex (NOT XML parser)
+    stream = doc.xref_stream(template_xref)
+    text = stream.decode('utf-8', errors='replace')
+    xfa_fields = []
+
+    for m in re.finditer(r'<(?:field|exclGroup)\s+[^>]*name="([^"]+)"', text):
+        name = m.group(1)
+        chunk = text[m.start():m.start() + 2000]
+        speak_m = re.search(
+            r'<speak[^>]*\n?>(.*?)</speak\s*\n?\s*>', chunk, re.DOTALL
+        )
+        speak = ""
+        if speak_m:
+            speak = speak_m.group(1).strip()
+            if 'Cat. No.' in speak:
+                speak = ""
+
+        if not name:
+            continue
+        if search and search.lower() not in f"{name} {speak}".lower():
+            continue
+        xfa_fields.append({"name": name, "speak": speak})
 
     doc.close()
     return xfa_fields

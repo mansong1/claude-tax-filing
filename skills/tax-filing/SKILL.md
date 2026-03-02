@@ -55,8 +55,6 @@ Before computing, research the correct values for the tax year being filed:
 
 Use IRS.gov and FTB.ca.gov as authoritative sources. Do NOT reuse prior-year amounts.
 
-> **Important**: `references/tax-computation.md` contains year-agnostic **formulas and algorithms only** (QDCG worksheet, capital loss rules). It does NOT contain bracket amounts, standard deductions, or thresholds. You must look those up fresh for every tax year.
-
 ### Step 4: Compute Federal Return
 
 Follow this sequence:
@@ -67,7 +65,7 @@ Follow this sequence:
 4. **Deductions**: Standard deduction or Schedule A → Line 12-14
 5. **Taxable Income**: AGI minus deductions → Line 15
 6. **Tax Computation**:
-   - If qualified dividends or capital gains exist: use QDCG Tax Worksheet (see `references/tax-computation.md`)
+   - If qualified dividends or capital gains exist: use QDCG Tax Worksheet
    - Otherwise: use tax tables or bracket computation
 7. **Credits**: Child tax credit, education, etc. → Lines 19-21
 8. **Other Taxes**: SE tax, penalty, etc. → Lines 23
@@ -97,11 +95,22 @@ If the user has stock/option sales:
 
 ### Step 7: Download Blank PDF Forms
 
-Find and download the correct blank PDF forms for the tax year and state being filed. Search the relevant tax authority websites:
-- **Federal**: irs.gov (look under Forms & Instructions)
-- **State**: the state's tax authority website (e.g. ftb.ca.gov for CA, dor.wa.gov for WA)
+Find and download the correct blank PDF forms for the tax year and state being filed.
 
-Download each form needed (1040, 8949, Schedule D, state return, etc.) and save as `*_blank.pdf` in the working directory. Verify each download is a real PDF (not an HTML error page).
+**Federal (IRS)**: Use `/irs-prior/` for prior-year forms. `/irs-pdf/` always has the **current** year.
+```
+# Prior-year forms (replace YEAR, e.g. 2024)
+https://www.irs.gov/pub/irs-prior/f1040--YEAR.pdf
+https://www.irs.gov/pub/irs-prior/f8949--YEAR.pdf
+https://www.irs.gov/pub/irs-prior/f1040sd--YEAR.pdf
+
+# Current-year forms
+https://www.irs.gov/pub/irs-pdf/f1040.pdf
+```
+
+**State**: Search the state's tax authority website (e.g. `ftb.ca.gov/forms/YEAR/` for CA).
+
+Download each form needed and save as `*_blank.pdf` in the working directory. Verify each download is a real PDF (check for `%PDF-` header, not an HTML error page).
 
 ### Step 8: Discover Field Names & Fill PDF Forms
 
@@ -140,7 +149,14 @@ python scripts/discover_fields.py form.pdf --page 1 --type Btn
 Different forms use different PDF metadata:
 - **IRS forms**: XFA `<assist><speak>` elements (use `--xfa-only`)
 - **CA Form 540**: AcroForm `/TU` tooltips (automatic with default mode)
-- **Fallback**: Map by `/Rect` position and trial fills
+
+**⚠️ HARD FAIL**: If neither method produces human-readable field descriptions, **STOP IMMEDIATELY**. Do not fill the form. Do not guess from field names or positions. Tell the user that field discovery failed and needs debugging. Filling with unmapped opaque field names like `f1_32[0]` will produce WRONG values in WRONG fields — this is worse than not filling at all.
+
+**Validation**: Expect roughly these field counts — significantly fewer means discovery is broken:
+- Form 1040: ~100+ fields
+- Schedule D: ~35 fields
+- Form 8949: ~126 fields
+- CA Form 540: ~120+ fields
 
 ### Step 9: Verify and Fix
 
@@ -214,6 +230,12 @@ If they decline, explain that without direct deposit their refund will arrive by
 
 ## Key Gotchas
 
+### Field Discovery — CRITICAL
+- **No stored field mappings**: Field names change between tax years. Always derive mappings fresh from the downloaded PDF using `scripts/discover_fields.py`. Never rely on cached, stored, or memorized mappings from a prior year.
+- **XFA template location**: The template is in `/AcroForm` → `/XFA` array. Look for `(template) N 0 R` in the object. Brute-force xref scanning (iterating all xrefs checking for `<template` in stream bytes) does NOT work reliably.
+- **Do NOT use XML parser for XFA**: `xml.etree.ElementTree` chokes on IRS XFA XML (unbound namespace prefixes, line-breaks inside closing tags like `</speak\n>`). Use regex extraction instead.
+- **HARD FAIL on zero fields**: If discovery returns 0 human-readable descriptions, STOP. Never guess field mappings. Never fill with unmapped opaque names. The risk of putting wrong values in wrong fields is the worst possible outcome.
+
 ### PDF Form Filling
 - **Remove XFA**: Delete `/XFA` from `/AcroForm` dictionary to force AcroForm rendering
 - **NeedAppearances**: Set to `True` so PDF viewers regenerate field appearances
@@ -228,10 +250,13 @@ If they decline, explain that without direct deposit their refund will arrive by
 - Address fields are often nested under a `ReadOrder` parent
 - The digital assets question is about **cryptocurrency**, not stock trades
 - Some checkboxes near Line 7 may be misidentified — always verify by XFA `<speak>` text, not by y-position
+- SSN field typically has a 9-character max — use digits only, no dashes
 
 ### IRS Schedule D & Form 8949
 - Schedule D may have read-only fields (e.g. `_RO` suffix) — don't try to fill those
 - Form 8949 checkboxes for Box A/B/C (and D/E/F) are typically 3-way radio buttons, not Yes/No pairs
+- When using Form 8949, Schedule D data goes to Line 1b/8b (from 8949), NOT Line 1a/8a (direct from 1099-B)
+- Form 8949 totals row fields are at high numbers (e.g. `f1_115`-`f1_119`), NOT immediately after the last data row
 
 ### CA Form 540
 - Field names often follow a `540-PPNN` pattern: PP = page number, NN = sequential field number
@@ -240,5 +265,6 @@ If they decline, explain that without direct deposit their refund will arrive by
 - Radio buttons (filing status, account type) use named AP keys — inspect `/AP/N` keys to find the correct value
 
 ### Downloading Forms
+- For prior-year IRS forms: use `irs.gov/pub/irs-prior/` (NOT `/irs-pdf/`)
+- `/irs-pdf/` always has the **current** year's forms
 - Always verify downloads are real PDFs (check for `%PDF-` header), not HTML error pages
-- Form URLs change between tax authorities and years — search the relevant website rather than guessing URLs
